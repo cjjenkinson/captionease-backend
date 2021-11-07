@@ -6,6 +6,7 @@ const cdk = require('@aws-cdk/core');
 const s3 = require('@aws-cdk/aws-s3');
 const s3n = require('@aws-cdk/aws-s3-notifications');
 const sqs = require('@aws-cdk/aws-sqs');
+const dynamodb = require('@aws-cdk/aws-dynamodb');
 const { S3EventSource } = require('@aws-cdk/aws-lambda-event-sources');
 
 
@@ -16,10 +17,10 @@ class TranscribeService extends cdk.Stack {
     super(app, id);
 
     // A user uploads a video
-    const videoInputBucket = fromBucketName(this, 'VideoInputBucket', `video-input-bucket-${stage}`);
+    const videoInputBucket = s3.Bucket.fromBucketName(this, 'VideoInputBucket', `development-storage-videoinputbucket940f4f43-1du1ixen5jp8u`);
+    const extractedAudioBucket = s3.Bucket.fromBucketName(this, 'AudioExtractedBucket', `development-storage-audioextractedbuckete38bcdcf-10n4xngbp78mz`);
 
-    videoInputBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(extractAudioLambda))
-    videoInputBucket.grantReadWrite(extractAudioLambda);
+    const videoTable = dynamodb.Table.fromTableName(this, 'DynamoTableVideos', 'development-videos' )
 
     const ffmpegLayer = new lambda.LayerVersion(this, 'ffmpeg-layer', {
       compatibleRuntimes: [
@@ -45,12 +46,19 @@ class TranscribeService extends cdk.Stack {
         SUPABASE_API_URL: process.env.SUPABASE_API_URL,
         SUPABASE_API_KEY: process.env.SUPABASE_API_KEY,
         VIDEO_INPUT_BUCKET: videoInputBucket.bucketArn,
-        EXTRACTED_VIDEO_AUDIO_BUCKET: extractAudioBucket.bucketArn
+        EXTRACTED_VIDEO_AUDIO_BUCKET: extractedAudioBucket.bucketArn
       },
       layers: [ffmpegLayer]
     }); 
 
-    const extractedAudioBucket = fromBucketName(this, 'AudioExtractedBucket', `audio-extracted-bucket-${stage}`);
+    videoInputBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(extractAudioLambda))
+    videoInputBucket.grantReadWrite(extractAudioLambda);
+
+    extractedAudioBucket.grantReadWrite(extractAudioLambda);
+
+    videoTable.grantReadWriteData(extractAudioLambda);
+    
+
 
     // For the extracted audio, dispatch a job to Assembly A.I for transcribining
 
